@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  consent-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: consent-agent:week1
+    container_name: consent-agent-interactive
+    
+    # GPU access - requires nvidia-container-toolkit
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    
+    # Volume mounts
+    volumes:
+      # Mount code for development (hot reload)
+      - ./app:/workspace/consent-agent/app
+      - ./config:/workspace/consent-agent/config
+      - ./scripts:/workspace/consent-agent/scripts
+      - ./tests:/workspace/consent-agent/tests
+      
+      # Mount models directory (persistent)
+      - ./models:/workspace/consent-agent/models
+      
+      # Mount data directories (persistent)
+      - ./data:/workspace/consent-agent/data
+      
+      # Mount root files
+      - ./run.sh:/workspace/consent-agent/run.sh
+      - ./requirements.txt:/workspace/consent-agent/requirements.txt
+    
+    # Working directory
+    working_dir: /workspace/consent-agent
+    
+    # Environment variables
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - PYTHONUNBUFFERED=1
+      - VLLM_ALLOW_LONG_MAX_MODEL_LEN=1
+    
+    # Shared memory size (important for vLLM)
+    shm_size: '16gb'
+    
+    # Network mode
+    network_mode: bridge
+    
+    # Interactive terminal
+    stdin_open: true
+    tty: true
+    
+    # Command - can override with docker-compose run
+    command: python app/orchestrator.py
+
+  # Optional: FastAPI service (for future API deployment)
+  consent-agent-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: consent-agent:week1
+    container_name: consent-agent-api
+    
+    profiles:
+      - api  # Only start with: docker-compose --profile api up
+    
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    
+    volumes:
+      - ./app:/workspace/consent-agent/app
+      - ./config:/workspace/consent-agent/config
+      - ./models:/workspace/consent-agent/models
+      - ./data:/workspace/consent-agent/data
+    
+    working_dir: /workspace/consent-agent
+    
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - PYTHONUNBUFFERED=1
+    
+    shm_size: '16gb'
+    
+    ports:
+      - "8000:8000"
+    
+    command: uvicorn app.api:app --host 0.0.0.0 --port 8000 --reload
+
+# Optional: Network configuration
+networks:
+  default:
+    name: consent-agent-network
